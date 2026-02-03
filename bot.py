@@ -3,107 +3,75 @@ import discord
 from discord import app_commands
 import aiohttp
 
-# Railway 환경변수에서 토큰을 읽음 (GitHub에 노출 안 됨)
+# ===== 환경변수 =====
 TOKEN = os.getenv("TOKEN") or os.getenv("DISCORD_TOKEN")
+DEV_GUILD_ID = int(os.getenv("DEV_GUILD_ID"))      # 서버 ID (길드 ID)
+CHANNEL_ID = 1467891770451955858                   # 기존 공지 채널 ID (그대로 유지)
 
-# 공지 올릴 디스코드 채널 ID
-CHANNEL_ID = 1467891770451955858  # 네 채널 ID 그대로 둬
-
-# (선택) 내 서버에서만 슬래시 커맨드 즉시 반영 테스트용
-DEV_GUILD_ID = os.getenv("DEV_GUILD_ID")  # 예: "123456789012345678"
-
-# (선택) "1"일 때만 커맨드 sync 실행 (자동배포에서 안전장치)
-SYNC_COMMANDS = os.getenv("SYNC_COMMANDS")  # "1" 또는 비워두기
-
-
+# ===== intents =====
 intents = discord.Intents.default()
-intents.message_content = True  # 기존 코드 유지 (슬래시에 꼭 필요하진 않음)
+intents.message_content = True
 
-client = discord.Client(intents=intents)
-tree = app_commands.CommandTree(client)
-@client.event
-async def setup_hook():
-    await tree.sync(guild=discord.Object(id=int(os.getenv("DEV_GUILD_ID"))))
+# ===== Client 클래스 =====
+class HeartopiaBot(discord.Client):
+    def __init__(self):
+        super().__init__(intents=intents)
+        self.tree = app_commands.CommandTree(self)
 
+    async def setup_hook(self):
+        # ⭐ 슬래시 커맨드 등록 (여기서 100% 확정)
+        await self.tree.sync(guild=discord.Object(id=DEV_GUILD_ID))
+        print("✅ 슬래시 커맨드 sync 완료")
 
+client = HeartopiaBot()
+
+# ===== 위키 기능 =====
 async def wiki_summary(query: str):
-    """
-    위키백과 요약 가져오기 (ko)
-    """
-    api = f"https://ko.wikipedia.org/api/rest_v1/page/summary/{query}"
-
+    url = f"https://ko.wikipedia.org/api/rest_v1/page/summary/{query}"
     async with aiohttp.ClientSession() as session:
-        async with session.get(api, headers={"User-Agent": "heartopia-bot/1.0"}) as r:
-            if r.status != 200:
+        async with session.get(url) as resp:
+            if resp.status != 200:
                 return None
-            data = await r.json()
+            data = await resp.json()
 
     extract = data.get("extract")
-    url = (data.get("content_urls", {})
-              .get("desktop", {})
-              .get("page"))
-
-    if not extract or not url:
+    page_url = data.get("content_urls", {}).get("desktop", {}).get("page")
+    if not extract or not page_url:
         return None
 
-    # 너무 길면 잘라서 디스코드 제한 방지
     if len(extract) > 800:
         extract = extract[:800] + "…"
 
-    return extract, url
+    return extract, page_url
 
+@client.tree.command(name="wiki", description="위키백과에서 검색어 요약을 가져와요")
+@app_commands.describe(query="검색어")
+async def wiki(interaction: discord.Interaction, query: str):
+    await interaction.response.defer()
+    result = await wiki_summary(query)
 
-@tree.command(name="wiki", description="위키백과에서 검색어 요약을 가져와요")
-
-@app_commands.describe(검색어="예: 서울, 메이플스토리, 양자역학")
-async def wiki(interaction: discord.Interaction, 검색어: str):
-    await interaction.response.defer(thinking=True, ephemeral=False)
-
-    result = await wiki_summary(검색어)
     if not result:
-        await interaction.followup.send(f"‘{검색어}’ 문서를 찾기 어려웠어. 검색어를 조금 바꿔볼래?")
+        await interaction.followup.send("❌ 문서를 찾을 수 없어.")
         return
 
-    extract, url = result
-    embed = discord.Embed(title=f"위키: {검색어}", description=extract)
-    embed.add_field(name="링크", value=url, inline=False)
+    extract, link = result
+    embed = discord.Embed(title=f"위키: {query}", description=extract)
+    embed.add_field(name="링크", value=link, inline=False)
     await interaction.followup.send(embed=embed)
 
-
-async def sync_commands_if_needed():
-    # 안전장치: 필요할 때만 sync
-    if SYNC_COMMANDS != "1":
-        return
-
-    # 내 서버에서만 즉시 반영(추천)
-    if DEV_GUILD_ID:
-        guild = discord.Object(id=int(DEV_GUILD_ID))
-        synced = await tree.sync(guild=guild)
-        print(f"[SYNC] Guild sync OK: {len(synced)} commands (guild={DEV_GUILD_ID})")
-    else:
-        # 전역 sync (반영까지 오래 걸릴 수 있음)
-        synced = await tree.sync()
-        print(f"[SYNC] Global sync OK: {len(synced)} commands")
-
-
+# ===== 기존 기능 유지 =====
 @client.event
 async def on_ready():
-    print(f"✅ 봇 로그인 완료! {client.user}")
+    print(f"✅ 봇 로그인 완료: {client.user}")
 
-    # (1) 커맨드 sync (필요할 때만)
-    await sync_commands_if_needed()
-
-    # (2) 기존 기능: 연결 메시지 보내기
     channel = client.get_channel(CHANNEL_ID)
     if channel:
-        await channel.send("✅ 하트토피아 봇 서버 연결 완료!")
+        await channel.send("✅ 하토피아 봇 서버 연결 완료!")
     else:
         print("❌ 채널을 찾을 수 없음")
 
-
+# ===== 실행 =====
 if not TOKEN:
-    raise RuntimeError("❌ TOKEN / DISCORD_TOKEN 환경변수가 비어있어!")
+    raise RuntimeError("TOKEN 환경변수가 없음")
 
 client.run(TOKEN)
-
-
