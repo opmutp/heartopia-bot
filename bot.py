@@ -21,6 +21,9 @@ intents.message_content = True  # 기존 코드 유지 (슬래시에 꼭 필요�
 
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
+@client.event
+async def setup_hook():
+    await tree.sync(guild=discord.Object(id=int(os.getenv("DEV_GUILD_ID"))))
 
 
 async def wiki_summary(query: str):
@@ -102,4 +105,5 @@ if not TOKEN:
     raise RuntimeError("❌ TOKEN / DISCORD_TOKEN 환경변수가 비어있어!")
 
 client.run(TOKEN)
+
 
