@@ -2,7 +2,8 @@ import os
 import discord
 
 # Railway 환경변수에서 토큰을 읽음 (GitHub에 노출 안 됨)
-TOKEN = os.environ.get("DISCORD_TOKEN")
+TOKEN = os.getenv("TOKEN") or os.getenv("DISCORD_TOKEN")
+
 
 # 공지 올릴 디스코드 채널 ID
 CHANNEL_ID = 1467891770451955858  # 네 채널 ID 그대로 둬
@@ -22,3 +23,4 @@ async def on_ready():
         print("❌ 채널을 찾을 수 없음")
 
 client.run(TOKEN)
+
