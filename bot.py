@@ -50,7 +50,8 @@ async def wiki_summary(query: str):
     return extract, url
 
 
-@tree.command(name="위키", description="위키백과에서 검색어 요약을 가져와요")
+@tree.command(name="wiki", description="위키백과에서 검색어 요약을 가져와요")
+
 @app_commands.describe(검색어="예: 서울, 메이플스토리, 양자역학")
 async def wiki(interaction: discord.Interaction, 검색어: str):
     await interaction.response.defer(thinking=True, ephemeral=False)
@@ -101,3 +102,4 @@ if not TOKEN:
     raise RuntimeError("❌ TOKEN / DISCORD_TOKEN 환경변수가 비어있어!")
 
 client.run(TOKEN)
+
